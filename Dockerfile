@@ -28,4 +28,4 @@ COPY --from=builder /app/apps/web/public ./apps/web/public
 COPY --from=builder /app/server-runtime ./server-runtime
 
 EXPOSE 3000
-CMD ["sh", "-c", "node /app/server-runtime/dist/index.js & exec node /app/apps/web/server.js"]
+CMD ["sh", "-c", "node /app/server-runtime/dist/migrate.js && (node /app/server-runtime/dist/index.js & exec node /app/apps/web/server.js)"]
