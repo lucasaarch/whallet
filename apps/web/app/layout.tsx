@@ -5,6 +5,7 @@ export const metadata: Metadata = {
   title: "Whallet — seu dinheiro, em movimento",
   description: "Controle financeiro com clareza.",
   manifest: "/manifest.webmanifest",
+  icons: { icon: "/whallet-mark.png" },
 };
 
 export default function RootLayout({
