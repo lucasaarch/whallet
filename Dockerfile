@@ -19,6 +19,7 @@ RUN pnpm --filter @whallet/server deploy --prod /app/server-runtime
 FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOSTNAME=0.0.0.0
 
 # Next standalone output keeps the monorepo path: apps/web/server.js.
 COPY --from=builder /app/apps/web/.next/standalone ./
