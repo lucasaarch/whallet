@@ -15,6 +15,7 @@ export const accounts = pgTable("accounts", {
   name: text("name").notNull(),
   type: text("type").notNull(),
   currency: text("currency").notNull().default("BRL"),
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
@@ -27,7 +28,25 @@ export const categories = pgTable("categories", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
   type: text("type").notNull(),
+  status: text("status").notNull().default("active"),
   createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
+export const budgets = pgTable("budgets", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  categoryId: uuid("category_id")
+    .notNull()
+    .references(() => categories.id),
+  amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+  currency: text("currency").notNull(),
+  periodStart: timestamp("period_start", { withTimezone: true }).notNull(),
+  periodEnd: timestamp("period_end", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
     .defaultNow()
     .notNull(),
 });

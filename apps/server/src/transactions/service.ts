@@ -1,24 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
-import { getDb } from "./db/index.js";
-import { accounts, categories, transactions } from "./db/schema.js";
+import { requireAccount } from "../accounts/service.js";
+import { getDb } from "../db/index.js";
+import { transactions } from "../db/schema.js";
 
-const currency = z
-  .string()
-  .regex(/^[A-Z]{3}$/, "currency must be an ISO 4217 code");
 const date = z.coerce.date();
-
-export const accountInputSchema = z.object({
-  name: z.string().trim().min(1),
-  type: z.enum(["bank", "cash", "card", "wallet"]),
-  currency: currency.default("BRL"),
-});
-
-export const categoryInputSchema = z.object({
-  name: z.string().trim().min(1),
-  type: z.enum(["expense", "income"]),
-});
 
 export const transactionInputSchema = z.object({
   type: z.enum(["expense", "income", "transfer"]),
@@ -47,39 +34,6 @@ function splitAmount(total: number, count: number) {
     { length: count },
     (_, index) => base + (index < remainder ? 1 : 0),
   );
-}
-
-async function requireAccount(id: string) {
-  const db = getDb();
-  const [account] = await db
-    .select()
-    .from(accounts)
-    .where(eq(accounts.id, id))
-    .limit(1);
-  if (!account) throw new Error("Account not found");
-  return account;
-}
-
-export async function createAccount(input: unknown) {
-  const values = accountInputSchema.parse(input);
-  const db = getDb();
-  const [account] = await db.insert(accounts).values(values).returning();
-  return account;
-}
-
-export async function listAccounts() {
-  return getDb().select().from(accounts).orderBy(accounts.name);
-}
-
-export async function createCategory(input: unknown) {
-  const values = categoryInputSchema.parse(input);
-  const db = getDb();
-  const [category] = await db.insert(categories).values(values).returning();
-  return category;
-}
-
-export async function listCategories() {
-  return getDb().select().from(categories).orderBy(categories.name);
 }
 
 export async function createTransaction(input: unknown) {
@@ -152,6 +106,11 @@ export async function createTransaction(input: unknown) {
 
 export async function listTransactions(filters: {
   accountId?: string;
+  categoryId?: string;
+  type?: "expense" | "income" | "transfer";
+  query?: string;
+  minAmountMinor?: number;
+  maxAmountMinor?: number;
   from?: Date;
   to?: Date;
   limit?: number;
@@ -164,6 +123,17 @@ export async function listTransactions(filters: {
     );
     if (accountCondition) conditions.push(accountCondition);
   }
+  if (filters.categoryId)
+    conditions.push(eq(transactions.categoryId, filters.categoryId));
+  if (filters.type) conditions.push(eq(transactions.type, filters.type));
+  if (filters.query)
+    conditions.push(
+      sql`(${transactions.description} ilike ${`%${filters.query}%`} or ${transactions.merchant} ilike ${`%${filters.query}%`})`,
+    );
+  if (filters.minAmountMinor !== undefined)
+    conditions.push(gte(transactions.amountMinor, filters.minAmountMinor));
+  if (filters.maxAmountMinor !== undefined)
+    conditions.push(lte(transactions.amountMinor, filters.maxAmountMinor));
   if (filters.from) conditions.push(gte(transactions.occurredAt, filters.from));
   if (filters.to) conditions.push(lte(transactions.occurredAt, filters.to));
   return getDb()
@@ -201,34 +171,4 @@ export async function cancelTransaction(id: string) {
     .returning();
   if (!cancelled) throw new Error("Transaction not found");
   return cancelled;
-}
-
-export async function getBalance(accountId: string) {
-  const account = await requireAccount(accountId);
-  const [result] = await getDb()
-    .select({
-      amountMinor: sql<number>`coalesce(sum(case when ${transactions.type} = 'income' and ${transactions.accountId} = ${accountId} then ${transactions.amountMinor} when ${transactions.type} = 'expense' and ${transactions.accountId} = ${accountId} then -${transactions.amountMinor} when ${transactions.type} = 'transfer' and ${transactions.accountId} = ${accountId} then -${transactions.amountMinor} when ${transactions.type} = 'transfer' and ${transactions.destinationAccountId} = ${accountId} then ${transactions.destinationAmountMinor} else 0 end), 0)`,
-    })
-    .from(transactions)
-    .where(eq(transactions.status, "active"));
-  return {
-    accountId,
-    currency: account.currency,
-    amountMinor: result.amountMinor ?? 0,
-  };
-}
-
-export async function getSummary(from?: Date, to?: Date) {
-  const conditions = [eq(transactions.status, "active")];
-  if (from) conditions.push(gte(transactions.occurredAt, from));
-  if (to) conditions.push(lte(transactions.occurredAt, to));
-  return getDb()
-    .select({
-      currency: transactions.currency,
-      type: transactions.type,
-      amountMinor: sql<number>`sum(${transactions.amountMinor})`,
-    })
-    .from(transactions)
-    .where(and(...conditions))
-    .groupBy(transactions.currency, transactions.type);
 }
