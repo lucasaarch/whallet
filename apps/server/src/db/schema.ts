@@ -94,6 +94,28 @@ export const transactions = pgTable(
   ],
 );
 
+export const obligations = pgTable("obligations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  direction: text("direction").notNull(),
+  status: text("status").notNull().default("pending"),
+  accountId: uuid("account_id")
+    .notNull()
+    .references(() => accounts.id),
+  categoryId: uuid("category_id").references(() => categories.id),
+  transactionId: uuid("transaction_id").references(() => transactions.id),
+  amountMinor: bigint("amount_minor", { mode: "number" }).notNull(),
+  currency: text("currency").notNull(),
+  description: text("description").notNull(),
+  dueDate: timestamp("due_date", { withTimezone: true }).notNull(),
+  paidAt: timestamp("paid_at", { withTimezone: true }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true })
+    .defaultNow()
+    .notNull(),
+});
+
 export const accountRelations = relations(accounts, ({ many }) => ({
   transactions: many(transactions),
 }));

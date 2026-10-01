@@ -25,8 +25,11 @@ export async function getSummary(from?: Date, to?: Date) {
   return getDb()
     .select({
       currency: transactions.currency,
-      type: transactions.type,
-      amountMinor: sql<number>`sum(${transactions.amountMinor})`,
+      incomeMinor: sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amountMinor} else 0 end), 0)`,
+      expenseMinor: sql<number>`coalesce(sum(case when ${transactions.type} = 'expense' then ${transactions.amountMinor} else 0 end), 0)`,
+      transferMinor: sql<number>`coalesce(sum(case when ${transactions.type} = 'transfer' then ${transactions.amountMinor} else 0 end), 0)`,
+      netMinor: sql<number>`coalesce(sum(case when ${transactions.type} = 'income' then ${transactions.amountMinor} when ${transactions.type} = 'expense' then -${transactions.amountMinor} else 0 end), 0)`,
+      transactionCount: sql<number>`count(*)`,
     })
     .from(transactions)
     .where(and(...conditions))

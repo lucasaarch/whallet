@@ -785,3 +785,57 @@ header h1 span {
   font-size: 10px;
   color: #999;
 }
+/* Keep navigation fixed to the viewport; the content column owns scrolling. */
+.app-shell {
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+}
+aside {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  flex: none;
+}
+.dashboard {
+  height: 100vh;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+.profile {
+  min-height: 62px !important;
+  border-radius: 10px !important;
+  background: #18191c !important;
+  padding: 12px !important;
+  border-top: 0 !important;
+}
+.profile .avatar {
+  flex: none;
+}
+.profile small {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.profile strong {
+  flex: none;
+}
+.sidebar-bottom {
+  gap: 10px;
+}
+@media (max-width: 900px) {
+  .app-shell {
+    height: auto;
+    min-height: 100vh;
+    overflow: visible;
+    display: block;
+  }
+  aside {
+    position: relative;
+    height: auto;
+  }
+  .dashboard {
+    height: auto;
+    overflow: visible;
+  }
+}

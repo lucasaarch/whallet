@@ -16,6 +16,13 @@ import {
   listCategories,
   updateCategory,
 } from "../categories/service.js";
+import {
+  cancelObligation,
+  createObligation,
+  listObligations,
+  settleObligation,
+  updateObligation,
+} from "../obligations/service.js";
 import { getBalance, getSummary } from "../reports/service.js";
 import {
   cancelTransaction,
@@ -25,6 +32,124 @@ import {
 } from "../transactions/service.js";
 
 export const mcpTools = [
+  {
+    name: "payable_create",
+    description: "Create an account payable due on a date",
+    inputSchema: {
+      type: "object",
+      required: [
+        "accountId",
+        "amountMinor",
+        "currency",
+        "description",
+        "dueDate",
+      ],
+      properties: {
+        accountId: { type: "string" },
+        categoryId: { type: "string" },
+        amountMinor: { type: "integer" },
+        currency: { type: "string" },
+        description: { type: "string" },
+        dueDate: { type: "string", format: "date-time" },
+      },
+    },
+  },
+  {
+    name: "payable_list",
+    description:
+      "List pending accounts payable, optionally filtered by due date",
+    inputSchema: {
+      type: "object",
+      properties: { from: { type: "string" }, to: { type: "string" } },
+    },
+  },
+  {
+    name: "payable_update",
+    description: "Edit a pending account payable",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" } },
+    },
+  },
+  {
+    name: "payable_settle",
+    description: "Settle an account payable and create its expense transaction",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" } },
+    },
+  },
+  {
+    name: "payable_cancel",
+    description: "Cancel a pending account payable",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" } },
+    },
+  },
+  {
+    name: "receivable_create",
+    description: "Create an account receivable due on a date",
+    inputSchema: {
+      type: "object",
+      required: [
+        "accountId",
+        "amountMinor",
+        "currency",
+        "description",
+        "dueDate",
+      ],
+      properties: {
+        accountId: { type: "string" },
+        categoryId: { type: "string" },
+        amountMinor: { type: "integer" },
+        currency: { type: "string" },
+        description: { type: "string" },
+        dueDate: { type: "string", format: "date-time" },
+      },
+    },
+  },
+  {
+    name: "receivable_list",
+    description:
+      "List pending accounts receivable, optionally filtered by due date",
+    inputSchema: {
+      type: "object",
+      properties: { from: { type: "string" }, to: { type: "string" } },
+    },
+  },
+  {
+    name: "receivable_update",
+    description: "Edit a pending account receivable",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" } },
+    },
+  },
+  {
+    name: "receivable_settle",
+    description:
+      "Settle an account receivable and create its income transaction",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" } },
+    },
+  },
+  {
+    name: "receivable_cancel",
+    description: "Cancel a pending account receivable",
+    inputSchema: {
+      type: "object",
+      required: ["id"],
+      properties: { id: { type: "string" } },
+    },
+  },
+
   {
     name: "budget_create",
     description: "Create a category budget for a date period",
@@ -249,6 +374,34 @@ export const mcpTools = [
 
 export async function callTool(name: string, args: Record<string, unknown>) {
   switch (name) {
+    case "payable_create":
+      return createObligation("payable", args);
+    case "payable_list":
+      return listObligations(
+        "payable",
+        typeof args.from === "string" ? new Date(args.from) : undefined,
+        typeof args.to === "string" ? new Date(args.to) : undefined,
+      );
+    case "payable_update":
+      return updateObligation(String(args.id), args);
+    case "payable_settle":
+      return settleObligation(String(args.id));
+    case "payable_cancel":
+      return cancelObligation(String(args.id));
+    case "receivable_create":
+      return createObligation("receivable", args);
+    case "receivable_list":
+      return listObligations(
+        "receivable",
+        typeof args.from === "string" ? new Date(args.from) : undefined,
+        typeof args.to === "string" ? new Date(args.to) : undefined,
+      );
+    case "receivable_update":
+      return updateObligation(String(args.id), args);
+    case "receivable_settle":
+      return settleObligation(String(args.id));
+    case "receivable_cancel":
+      return cancelObligation(String(args.id));
     case "budget_create":
       return createBudget(args);
     case "budget_list":

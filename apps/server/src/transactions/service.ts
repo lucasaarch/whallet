@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { and, desc, eq, gte, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireAccount } from "../accounts/service.js";
+import { requireCategory } from "../categories/service.js";
 import { getDb } from "../db/index.js";
 import { transactions } from "../db/schema.js";
 
@@ -40,6 +41,7 @@ export async function createTransaction(input: unknown) {
   const values = transactionInputSchema.parse(input);
   const db = getDb();
   const account = await requireAccount(values.accountId);
+  if (values.categoryId) await requireCategory(values.categoryId);
 
   if (values.idempotencyKey) {
     const [existing] = await db

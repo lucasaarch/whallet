@@ -172,10 +172,20 @@ function money(minor: number, currency = "BRL") {
     (minor || 0) / 100,
   );
 }
+function decodeUsername(authorization: string) {
+  try {
+    const decoded = atob(authorization.replace(/^Basic\s+/i, ""));
+    return decoded.split(":", 1)[0] || "Usuário";
+  } catch {
+    return "Usuário";
+  }
+}
 function Dashboard({
   authorization,
   onLogout,
 }: { authorization: string; onLogout: () => void }) {
+  const username = decodeUsername(authorization);
+  const initials = username.slice(0, 2).toUpperCase();
   const [summary, setSummary] = useState<Summary[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
@@ -246,9 +256,9 @@ function Dashboard({
         <div className="sidebar-bottom">
           <Nav icon={Settings}>Configurações</Nav>
           <button type="button" className="profile" onClick={onLogout}>
-            <span className="avatar">LM</span>
+            <span className="avatar">{initials}</span>
             <span>
-              <b>Lucas Martins</b>
+              <b>{username}</b>
               <small>
                 <LogOut size={11} /> Sair da conta
               </small>
@@ -262,7 +272,7 @@ function Dashboard({
           <div>
             <p className="eyebrow">visão geral</p>
             <h1>
-              Bom dia, Lucas <span>✦</span>
+              Bom dia, {username} <span>✦</span>
             </h1>
           </div>
           <button type="button" className="round">

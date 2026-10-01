@@ -45,3 +45,14 @@ export async function archiveCategory(id: string) {
   if (!category) throw new Error("Category not found");
   return category;
 }
+
+export async function requireCategory(id: string) {
+  const [category] = await getDb()
+    .select()
+    .from(categories)
+    .where(eq(categories.id, id))
+    .limit(1);
+  if (!category || category.status !== "active")
+    throw new Error("Category not found or archived");
+  return category;
+}

@@ -10,6 +10,7 @@ export function registerHttpRoutes(app: FastifyInstance) {
   app.get("/health", async () =>
     healthResponseSchema.parse({ status: "ok", service: "whallet-api" }),
   );
+  app.get("/session", async () => ({ authenticated: true }));
   registerAccountRoutes(app);
   registerCategoryRoutes(app);
   registerTransactionRoutes(app);
