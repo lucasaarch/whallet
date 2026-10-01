@@ -1,16 +1,29 @@
-FROM node:22-alpine AS build
-WORKDIR /app
+FROM node:22-alpine AS base
 RUN corepack enable
-COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* tsconfig.base.json biome.json ./
-COPY apps ./apps
-COPY packages ./packages
-RUN pnpm install --frozen-lockfile=false
-RUN pnpm build
 
-FROM node:22-alpine AS runtime
+FROM base AS deps
+WORKDIR /app
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/server/package.json apps/server/package.json
+COPY apps/web/package.json apps/web/package.json
+COPY packages/contracts/package.json packages/contracts/package.json
+RUN pnpm install --frozen-lockfile
+
+FROM base AS builder
+WORKDIR /app
+COPY --from=deps /app/node_modules ./node_modules
+COPY . .
+RUN pnpm build
+RUN pnpm --filter @whallet/server deploy --prod /app/server-runtime
+
+FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
-RUN corepack enable
-COPY --from=build /app /app
+
+# Next standalone output keeps the monorepo path: apps/web/server.js.
+COPY --from=builder /app/apps/web/.next/standalone ./
+COPY --from=builder /app/apps/web/.next/static ./apps/web/.next/static
+COPY --from=builder /app/server-runtime ./server-runtime
+
 EXPOSE 3000
-CMD ["sh", "-c", "node apps/server/dist/index.js & exec pnpm --filter @whallet/web start"]
+CMD ["sh", "-c", "node /app/server-runtime/dist/index.js & exec node /app/apps/web/server.js"]
