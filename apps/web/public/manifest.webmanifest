@@ -1,0 +1,17 @@
+{
+  "name": "Whallet",
+  "short_name": "Whallet",
+  "description": "Seu dinheiro, em movimento.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbfbfa",
+  "theme_color": "#111214",
+  "icons": [
+    {
+      "src": "/whallet-mark.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
