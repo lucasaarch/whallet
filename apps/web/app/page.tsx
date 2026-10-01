@@ -13,7 +13,6 @@ import {
   LoaderCircle,
   LogOut,
   MoreHorizontal,
-  Plus,
   Search,
   Settings,
   Target,
@@ -54,14 +53,18 @@ type View =
 export default function Home() {
   const [authorization, setAuthorization] = useState<string | null>(null);
   useEffect(
-    () => setAuthorization(sessionStorage.getItem("whallet.authorization")),
+    () =>
+      setAuthorization(
+        localStorage.getItem("whallet.authorization") ??
+          sessionStorage.getItem("whallet.authorization"),
+      ),
     [],
   );
   if (!authorization)
     return (
       <Login
         onEnter={(value) => {
-          sessionStorage.setItem("whallet.authorization", value);
+          localStorage.setItem("whallet.authorization", value);
           setAuthorization(value);
         }}
       />
@@ -70,6 +73,7 @@ export default function Home() {
     <Dashboard
       authorization={authorization}
       onLogout={() => {
+        localStorage.removeItem("whallet.authorization");
         sessionStorage.removeItem("whallet.authorization");
         setAuthorization(null);
       }}
@@ -77,7 +81,10 @@ export default function Home() {
   );
 }
 
-function Logo({ compact = false }: { compact?: boolean }) {
+function Logo({
+  compact = false,
+  dark = false,
+}: { compact?: boolean; dark?: boolean }) {
   return (
     <div className={`brand ${compact ? "brand-compact" : ""}`}>
       <img src="/whallet-mark.png" alt="" />
@@ -114,7 +121,7 @@ function Login({ onEnter }: { onEnter: (authorization: string) => void }) {
   return (
     <main className="login-shell">
       <section className="login-art">
-        <Logo />
+        <Logo dark />
         <div className="art-copy">
           <p className="eyebrow">seu dinheiro, em movimento</p>
           <h1>
@@ -136,6 +143,9 @@ function Login({ onEnter }: { onEnter: (authorization: string) => void }) {
         </p>
       </section>
       <section className="login-form">
+        <div className="mobile-login-brand">
+          <Logo />
+        </div>
         <form className="form-inner" onSubmit={signIn}>
           <p className="eyebrow">acesso seguro</p>
           <h2>
@@ -169,9 +179,9 @@ function Login({ onEnter }: { onEnter: (authorization: string) => void }) {
             </div>
           </label>
           <div className="form-row">
-            <label className="check">
-              <input type="checkbox" /> Lembrar de mim
-            </label>
+            <span className="check">
+              Sua sessão será salva neste dispositivo.
+            </span>
           </div>
           <button type="submit" className="primary" disabled={busy}>
             {busy ? <LoaderCircle className="spin" size={17} /> : "Entrar"}{" "}
@@ -189,33 +199,18 @@ function money(minor: number, currency = "BRL") {
     (minor || 0) / 100,
   );
 }
-function decodeUsername(authorization: string) {
-  try {
-    const decoded = atob(authorization.replace(/^Basic\s+/i, ""));
-    return decoded.split(":", 1)[0] || "Usuário";
-  } catch {
-    return "Usuário";
-  }
-}
 function Dashboard({
   authorization,
   onLogout,
 }: { authorization: string; onLogout: () => void }) {
-  const username = decodeUsername(authorization);
   const [view, setView] = useState<View>("overview");
   const [summary, setSummary] = useState<Summary[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
-  const [live, setLive] = useState(false);
   const navigate = useCallback((next: View) => {
-    const viewDocument = document as Document & {
-      startViewTransition?: (callback: () => void) => void;
-    };
-    if (viewDocument.startViewTransition)
-      viewDocument.startViewTransition(() => setView(next));
-    else setView(next);
+    setView(next);
   }, []);
   const loadDashboard = useCallback(
     async (showLoading = true) => {
@@ -270,7 +265,6 @@ function Dashboard({
           signal: controller.signal,
         });
         if (!response.ok || !response.body) throw new Error("SSE unavailable");
-        setLive(true);
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
         while (!controller.signal.aborted) {
@@ -282,9 +276,7 @@ function Dashboard({
           if (events.some((event) => event.includes("dashboard.updated")))
             await loadDashboard(false);
         }
-      } catch {
-        if (!controller.signal.aborted) setLive(false);
-      }
+      } catch {}
     };
     listen();
     return () => controller.abort();
@@ -301,7 +293,7 @@ function Dashboard({
   return (
     <main className="app-shell">
       <aside>
-        <Logo compact />
+        <Logo compact dark />
         <nav>
           <Nav
             icon={LayoutDashboard}
@@ -354,217 +346,215 @@ function Dashboard({
         </div>
       </aside>
       <section className="dashboard">
-        <header>
-          <div>
-            <p className="eyebrow">visão geral</p>
-            <h1>
-              Bom dia, {username} <span>✦</span>
-            </h1>
-          </div>
-          <button type="button" className="round">
-            <Search size={17} />
-          </button>
-          <button type="button" className="notification">
-            <Bell size={17} />
-            <i />
-          </button>
-          <span className={`live-status ${live ? "is-live" : ""}`}>
-            <i /> {live ? "ao vivo" : "reconectando"}
-          </span>
-        </header>
-        {offline && (
-          <div className="offline-bar">
-            <Waves size={15} /> Exibindo os últimos dados salvos. Você está
-            offline.
-          </div>
-        )}
-        {error && (
-          <div className="error-bar">
-            <CircleHelp size={15} /> {error}
-            <button type="button" onClick={() => location.reload()}>
-              <X size={14} />
+        <header className="shell-header">
+          <div className="shell-header-actions">
+            <button type="button" className="round">
+              <Search size={17} />
+            </button>
+            <button type="button" className="notification">
+              <Bell size={17} />
+              <i />
             </button>
           </div>
-        )}
-        {view !== "overview" ? (
-          <WorkspaceView view={view} onBack={() => navigate("overview")} />
-        ) : (
-          <div className="dashboard-grid">
-            <section className="balance-card">
-              <div className="card-top">
-                <span>saldo líquido</span>
-                <MoreHorizontal size={17} />
-              </div>
-              <strong>
-                {loading ? (
-                  <LoaderCircle className="spin" />
-                ) : (
-                  money(totals.net, totals.currency)
-                )}
-              </strong>
-              <p className={totals.net >= 0 ? "positive" : "negative"}>
-                <ArrowUpRight size={14} /> período atual
-              </p>
-              <div className="balance-chart">
-                <ResponsiveContainer width="100%" height={130}>
-                  <AreaChart
-                    data={transactions
-                      .slice()
-                      .reverse()
-                      .map((transaction, index) => ({
-                        label: index + 1,
-                        value:
-                          transaction.type === "expense"
-                            ? -transaction.amountMinor
-                            : transaction.amountMinor,
-                      }))}
-                  >
-                    <defs>
-                      <linearGradient
-                        id="balanceFill"
-                        x1="0"
-                        y1="0"
-                        x2="0"
-                        y2="1"
+        </header>
+        <div className="dashboard-content">
+          {offline && (
+            <div className="offline-bar">
+              <Waves size={15} /> Exibindo os últimos dados salvos. Você está
+              offline.
+            </div>
+          )}
+          {error && (
+            <div className="error-bar">
+              <CircleHelp size={15} /> {error}
+              <button type="button" onClick={() => location.reload()}>
+                <X size={14} />
+              </button>
+            </div>
+          )}
+          {view !== "overview" ? (
+            <WorkspaceView view={view} onBack={() => navigate("overview")} />
+          ) : (
+            <>
+              <QuickActions
+                summaryCount={summary.length}
+                hasTransactions={Boolean(totals.income + totals.expense)}
+                onNavigate={navigate}
+              />
+              <div className="dashboard-grid">
+                <section className="balance-card">
+                  <div className="card-top">
+                    <span>saldo líquido</span>
+                    <button
+                      type="button"
+                      className="card-link"
+                      aria-label="Abrir transações"
+                      onClick={() => navigate("transactions")}
+                    >
+                      <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  <strong>
+                    {loading ? (
+                      <LoaderCircle className="spin" />
+                    ) : (
+                      money(totals.net, totals.currency)
+                    )}
+                  </strong>
+                  <p className={totals.net >= 0 ? "positive" : "negative"}>
+                    <ArrowUpRight size={14} /> período atual
+                  </p>
+                  <div className="balance-chart">
+                    <ResponsiveContainer width="100%" height={130}>
+                      <AreaChart
+                        data={transactions
+                          .slice()
+                          .reverse()
+                          .map((transaction, index) => ({
+                            label: index + 1,
+                            value:
+                              transaction.type === "expense"
+                                ? -transaction.amountMinor
+                                : transaction.amountMinor,
+                          }))}
                       >
-                        <stop
-                          offset="0%"
-                          stopColor="#6f8bff"
-                          stopOpacity={0.65}
+                        <defs>
+                          <linearGradient
+                            id="balanceFill"
+                            x1="0"
+                            y1="0"
+                            x2="0"
+                            y2="1"
+                          >
+                            <stop
+                              offset="0%"
+                              stopColor="#f5f5f3"
+                              stopOpacity={0.65}
+                            />
+                            <stop
+                              offset="100%"
+                              stopColor="#f5f5f3"
+                              stopOpacity={0}
+                            />
+                          </linearGradient>
+                        </defs>
+                        <XAxis dataKey="label" hide />
+                        <YAxis hide domain={["auto", "auto"]} />
+                        <CartesianGrid vertical={false} stroke="#252a3b" />
+                        <Tooltip
+                          contentStyle={{
+                            background: "#191b22",
+                            border: "1px solid #333",
+                            borderRadius: 8,
+                            color: "#fff",
+                          }}
+                          formatter={(value) =>
+                            money(Number(value), totals.currency)
+                          }
+                          labelFormatter={() => "movimentação"}
                         />
-                        <stop
-                          offset="100%"
-                          stopColor="#6f8bff"
-                          stopOpacity={0}
+                        <Area
+                          type="monotone"
+                          dataKey="value"
+                          stroke="#f5f5f3"
+                          strokeWidth={2}
+                          fill="url(#balanceFill)"
+                          connectNulls
                         />
-                      </linearGradient>
-                    </defs>
-                    <XAxis dataKey="label" hide />
-                    <YAxis hide domain={["auto", "auto"]} />
-                    <CartesianGrid vertical={false} stroke="#252a3b" />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#191b22",
-                        border: "1px solid #333",
-                        borderRadius: 8,
-                        color: "#fff",
-                      }}
-                      formatter={(value) =>
-                        money(Number(value), totals.currency)
-                      }
-                      labelFormatter={() => "movimentação"}
-                    />
-                    <Area
-                      type="monotone"
-                      dataKey="value"
-                      stroke="#7c95ff"
-                      strokeWidth={2}
-                      fill="url(#balanceFill)"
-                      connectNulls
-                    />
-                  </AreaChart>
-                </ResponsiveContainer>
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                  <div className="card-foot">
+                    <span>receitas − despesas</span>
+                    <span>agora</span>
+                  </div>
+                  <div className="balance-details">
+                    <div>
+                      <span>movimentações</span>
+                      <strong>{transactions.length}</strong>
+                    </div>
+                    <div>
+                      <span>moedas</span>
+                      <strong>{summary.length}</strong>
+                    </div>
+                  </div>
+                </section>
+                <Stat
+                  icon={ArrowUpRight}
+                  tone="income-bg"
+                  label="receitas"
+                  value={loading ? "—" : money(totals.income, totals.currency)}
+                  onNavigate={() => navigate("transactions")}
+                />
+                <Stat
+                  icon={ArrowDownLeft}
+                  tone="expense-bg"
+                  label="despesas"
+                  value={loading ? "—" : money(totals.expense, totals.currency)}
+                  onNavigate={() => navigate("transactions")}
+                />
+                <section className="panel movements">
+                  <div className="panel-head">
+                    <div>
+                      <h3>Movimentações recentes</h3>
+                      <p>O que aconteceu com seu dinheiro.</p>
+                    </div>
+                    <button
+                      type="button"
+                      className="link"
+                      onClick={() => navigate("transactions")}
+                    >
+                      Ver todas <ChevronRight size={14} />
+                    </button>
+                  </div>
+                  {loading ? (
+                    <LoadingRows />
+                  ) : (
+                    (transactions.length
+                      ? transactions
+                      : fallbackMovements
+                    ).map((m, index) => {
+                      const Icon =
+                        "icon" in m
+                          ? m.icon
+                          : m.type === "income"
+                            ? ArrowUpRight
+                            : m.type === "expense"
+                              ? ArrowDownLeft
+                              : ArrowLeftRight;
+                      const tone = "tone" in m ? m.tone : m.type;
+                      return (
+                        <div
+                          className="movement"
+                          key={"id" in m ? m.id : index}
+                        >
+                          <span className={`movement-icon ${tone}`}>
+                            <Icon size={15} />
+                          </span>
+                          <span className="movement-info">
+                            <b>{"title" in m ? m.title : m.description}</b>
+                            <small>
+                              {"meta" in m
+                                ? m.meta
+                                : new Date(m.occurredAt).toLocaleDateString(
+                                    "pt-BR",
+                                  )}
+                            </small>
+                          </span>
+                          <strong className={tone}>
+                            {"amount" in m
+                              ? m.amount
+                              : `${m.type === "income" ? "+" : m.type === "expense" ? "−" : ""} ${money(m.amountMinor, m.currency)}`}
+                          </strong>
+                        </div>
+                      );
+                    })
+                  )}
+                </section>
               </div>
-              <div className="card-foot">
-                <span>receitas − despesas</span>
-                <span>agora</span>
-              </div>
-            </section>
-            <Stat
-              icon={ArrowUpRight}
-              tone="income-bg"
-              label="receitas"
-              value={loading ? "—" : money(totals.income, totals.currency)}
-            />
-            <Stat
-              icon={ArrowDownLeft}
-              tone="expense-bg"
-              label="despesas"
-              value={loading ? "—" : money(totals.expense, totals.currency)}
-            />
-            <section className="panel movements">
-              <div className="panel-head">
-                <div>
-                  <h3>Movimentações recentes</h3>
-                  <p>O que aconteceu com seu dinheiro.</p>
-                </div>
-                <button type="button" className="link">
-                  Ver todas <ChevronRight size={14} />
-                </button>
-              </div>
-              {loading ? (
-                <LoadingRows />
-              ) : (
-                (transactions.length ? transactions : fallbackMovements).map(
-                  (m, index) => {
-                    const Icon =
-                      "icon" in m
-                        ? m.icon
-                        : m.type === "income"
-                          ? ArrowUpRight
-                          : m.type === "expense"
-                            ? ArrowDownLeft
-                            : ArrowLeftRight;
-                    const tone = "tone" in m ? m.tone : m.type;
-                    return (
-                      <div className="movement" key={"id" in m ? m.id : index}>
-                        <span className={`movement-icon ${tone}`}>
-                          <Icon size={15} />
-                        </span>
-                        <span className="movement-info">
-                          <b>{"title" in m ? m.title : m.description}</b>
-                          <small>
-                            {"meta" in m
-                              ? m.meta
-                              : new Date(m.occurredAt).toLocaleDateString(
-                                  "pt-BR",
-                                )}
-                          </small>
-                        </span>
-                        <strong className={tone}>
-                          {"amount" in m
-                            ? m.amount
-                            : `${m.type === "income" ? "+" : m.type === "expense" ? "−" : ""} ${money(m.amountMinor, m.currency)}`}
-                        </strong>
-                      </div>
-                    );
-                  },
-                )
-              )}
-            </section>
-            <section className="panel goals">
-              <div className="panel-head">
-                <div>
-                  <h3>Atalhos</h3>
-                  <p>Ações rápidas para sua rotina.</p>
-                </div>
-                <button type="button" className="add">
-                  <Plus size={16} />
-                </button>
-              </div>
-              <div className="quick-action">
-                <ChartNoAxesCombined size={18} />
-                <span>
-                  <b>Resumo financeiro</b>
-                  <small>
-                    {totals.income + totals.expense
-                      ? `${summary.length} moeda(s) no período`
-                      : "Sem lançamentos ainda"}
-                  </small>
-                </span>
-                <ChevronRight size={15} />
-              </div>
-              <div className="quick-action">
-                <CreditCard size={18} />
-                <span>
-                  <b>Contas a pagar e receber</b>
-                  <small>Veja seus próximos vencimentos</small>
-                </span>
-                <ChevronRight size={15} />
-              </div>
-            </section>
-          </div>
-        )}
+            </>
+          )}
+        </div>
       </section>
       <nav className="bottom-bar" aria-label="Navegação principal">
         <Nav
@@ -700,7 +690,14 @@ function Stat({
   tone,
   label,
   value,
-}: { icon: typeof ArrowUpRight; tone: string; label: string; value: string }) {
+  onNavigate,
+}: {
+  icon: typeof ArrowUpRight;
+  tone: string;
+  label: string;
+  value: string;
+  onNavigate: () => void;
+}) {
   return (
     <section className="stat-card">
       <div className="stat-head">
@@ -708,7 +705,14 @@ function Stat({
           <Icon size={15} />
         </span>
         <span>{label}</span>
-        <MoreHorizontal size={17} />
+        <button
+          type="button"
+          className="card-link"
+          aria-label={`Abrir transações de ${label}`}
+          onClick={onNavigate}
+        >
+          <ChevronRight size={14} />
+        </button>
       </div>
       <strong>{value}</strong>
       <p className="positive">
@@ -717,6 +721,42 @@ function Stat({
     </section>
   );
 }
+
+function QuickActions({
+  summaryCount,
+  hasTransactions,
+  onNavigate,
+}: {
+  summaryCount: number;
+  hasTransactions: boolean;
+  onNavigate: (view: View) => void;
+}) {
+  return (
+    <section className="quick-actions" aria-label="Atalhos">
+      <button type="button" onClick={() => onNavigate("transactions")}>
+        <ChartNoAxesCombined size={18} />
+        <span>
+          <b>Resumo financeiro</b>
+          <small>
+            {hasTransactions
+              ? `${summaryCount} moeda(s) no período`
+              : "Sem lançamentos ainda"}
+          </small>
+        </span>
+        <ChevronRight size={15} />
+      </button>
+      <button type="button" onClick={() => onNavigate("obligations")}>
+        <CreditCard size={18} />
+        <span>
+          <b>Contas a pagar e receber</b>
+          <small>Veja seus próximos vencimentos</small>
+        </span>
+        <ChevronRight size={15} />
+      </button>
+    </section>
+  );
+}
+
 function LoadingRows() {
   return (
     <>
