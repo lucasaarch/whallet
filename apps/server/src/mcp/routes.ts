@@ -17,6 +17,13 @@ function errorResponse(error: unknown) {
 }
 
 export function registerMcpRoutes(app: FastifyInstance) {
+  app.get("/mcp", async () => ({
+    protocolVersion: "2024-11-05",
+    capabilities: { tools: {} },
+    serverInfo: { name: "whallet", version: "0.1.0" },
+    tools: mcpTools,
+  }));
+
   app.post<{ Body: JsonRpcRequest }>("/mcp", async (request, reply) => {
     const body = request.body;
     if (!body || body.jsonrpc !== "2.0" || typeof body.method !== "string") {
