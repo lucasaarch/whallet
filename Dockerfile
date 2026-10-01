@@ -11,7 +11,7 @@ RUN pnpm install --frozen-lockfile --prod=false
 
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/ ./
 COPY . .
 RUN pnpm build
 RUN pnpm --filter @whallet/server deploy --prod /app/server-runtime
