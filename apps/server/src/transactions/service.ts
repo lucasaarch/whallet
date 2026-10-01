@@ -5,6 +5,7 @@ import { requireAccount } from "../accounts/service.js";
 import { requireCategory } from "../categories/service.js";
 import { getDb } from "../db/index.js";
 import { transactions } from "../db/schema.js";
+import { publishDashboardUpdate } from "../http/events.js";
 
 const date = z.coerce.date();
 
@@ -78,6 +79,7 @@ export async function createTransaction(input: unknown) {
         idempotencyKey: values.idempotencyKey,
       })
       .returning();
+    publishDashboardUpdate();
     return { transactions: [created], duplicate: false };
   }
 
@@ -103,6 +105,7 @@ export async function createTransaction(input: unknown) {
       })),
     )
     .returning();
+  publishDashboardUpdate();
   return { transactions: created, duplicate: false };
 }
 
@@ -162,6 +165,7 @@ export async function updateTransaction(id: string, input: unknown) {
     .where(and(eq(transactions.id, id), eq(transactions.status, "active")))
     .returning();
   if (!updated) throw new Error("Transaction not found");
+  publishDashboardUpdate();
   return updated;
 }
 
@@ -172,5 +176,6 @@ export async function cancelTransaction(id: string) {
     .where(and(eq(transactions.id, id), eq(transactions.status, "active")))
     .returning();
   if (!cancelled) throw new Error("Transaction not found");
+  publishDashboardUpdate();
   return cancelled;
 }

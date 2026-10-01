@@ -21,7 +21,16 @@ import {
   Waves,
   X,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import {
+  Area,
+  AreaChart,
+  CartesianGrid,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
 import { type Summary, type Transaction, apiFetch } from "./api";
 
 const fallbackMovements = [
@@ -33,6 +42,14 @@ const fallbackMovements = [
     icon: ArrowLeftRight,
   },
 ];
+
+type View =
+  | "overview"
+  | "transactions"
+  | "accounts"
+  | "budgets"
+  | "obligations"
+  | "settings";
 
 export default function Home() {
   const [authorization, setAuthorization] = useState<string | null>(null);
@@ -185,23 +202,33 @@ function Dashboard({
   onLogout,
 }: { authorization: string; onLogout: () => void }) {
   const username = decodeUsername(authorization);
-  const initials = username.slice(0, 2).toUpperCase();
+  const [view, setView] = useState<View>("overview");
   const [summary, setSummary] = useState<Summary[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [offline, setOffline] = useState(false);
-  useEffect(() => {
-    let alive = true;
-    const load = async () => {
+  const [live, setLive] = useState(false);
+  const navigate = useCallback((next: View) => {
+    const viewDocument = document as Document & {
+      startViewTransition?: (callback: () => void) => void;
+    };
+    if (viewDocument.startViewTransition)
+      viewDocument.startViewTransition(() => setView(next));
+    else setView(next);
+  }, []);
+  const loadDashboard = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) setLoading(true);
       try {
         const [nextSummary, nextTransactions] = await Promise.all([
           apiFetch<Summary[]>("/summary", authorization),
-          apiFetch<Transaction[]>("/transactions?limit=4", authorization),
+          apiFetch<Transaction[]>("/transactions?limit=8", authorization),
         ]);
-        if (!alive) return;
         setSummary(nextSummary);
         setTransactions(nextTransactions);
+        setOffline(false);
+        setError("");
         localStorage.setItem(
           "whallet.dashboard",
           JSON.stringify({
@@ -216,21 +243,52 @@ function Dashboard({
           setSummary(data.summary ?? []);
           setTransactions(data.transactions ?? []);
           setOffline(true);
-        } else
+        } else {
           setError(
             cause instanceof Error
               ? cause.message
               : "Não foi possível carregar o painel.",
           );
+        }
       } finally {
-        if (alive) setLoading(false);
+        setLoading(false);
+      }
+    },
+    [authorization],
+  );
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
+  useEffect(() => {
+    const controller = new AbortController();
+    let buffer = "";
+    const listen = async () => {
+      try {
+        const response = await fetch("/api/events", {
+          headers: { authorization, Accept: "text/event-stream" },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        if (!response.ok || !response.body) throw new Error("SSE unavailable");
+        setLive(true);
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        while (!controller.signal.aborted) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split("\n\n");
+          buffer = events.pop() ?? "";
+          if (events.some((event) => event.includes("dashboard.updated")))
+            await loadDashboard(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) setLive(false);
       }
     };
-    load();
-    return () => {
-      alive = false;
-    };
-  }, [authorization]);
+    listen();
+    return () => controller.abort();
+  }, [authorization, loadDashboard]);
   const totals = summary.reduce(
     (acc, row) => ({
       income: acc.income + Number(row.incomeMinor || 0),
@@ -245,25 +303,53 @@ function Dashboard({
       <aside>
         <Logo compact />
         <nav>
-          <Nav icon={LayoutDashboard} active>
+          <Nav
+            icon={LayoutDashboard}
+            active={view === "overview"}
+            onClick={() => navigate("overview")}
+          >
             Visão geral
           </Nav>
-          <Nav icon={ArrowLeftRight}>Transações</Nav>
-          <Nav icon={Wallet}>Contas</Nav>
-          <Nav icon={Target}>Orçamentos</Nav>
-          <Nav icon={CreditCard}>A pagar e receber</Nav>
+          <Nav
+            icon={ArrowLeftRight}
+            active={view === "transactions"}
+            onClick={() => navigate("transactions")}
+          >
+            Transações
+          </Nav>
+          <Nav
+            icon={Wallet}
+            active={view === "accounts"}
+            onClick={() => navigate("accounts")}
+          >
+            Contas
+          </Nav>
+          <Nav
+            icon={Target}
+            active={view === "budgets"}
+            onClick={() => navigate("budgets")}
+          >
+            Orçamentos
+          </Nav>
+          <Nav
+            icon={CreditCard}
+            active={view === "obligations"}
+            onClick={() => navigate("obligations")}
+          >
+            A pagar e receber
+          </Nav>
         </nav>
         <div className="sidebar-bottom">
-          <Nav icon={Settings}>Configurações</Nav>
-          <button type="button" className="profile" onClick={onLogout}>
-            <span className="avatar">{initials}</span>
-            <span>
-              <b>{username}</b>
-              <small>
-                <LogOut size={11} /> Sair da conta
-              </small>
-            </span>
-            <ChevronRight size={15} />
+          <Nav
+            icon={Settings}
+            active={view === "settings"}
+            onClick={() => navigate("settings")}
+          >
+            Configurações
+          </Nav>
+          <button type="button" className="logout-button" onClick={onLogout}>
+            <LogOut size={16} />
+            Sair da conta
           </button>
         </div>
       </aside>
@@ -282,6 +368,9 @@ function Dashboard({
             <Bell size={17} />
             <i />
           </button>
+          <span className={`live-status ${live ? "is-live" : ""}`}>
+            <i /> {live ? "ao vivo" : "reconectando"}
+          </span>
         </header>
         {offline && (
           <div className="offline-bar">
@@ -297,130 +386,216 @@ function Dashboard({
             </button>
           </div>
         )}
-        <div className="dashboard-grid">
-          <section className="balance-card">
-            <div className="card-top">
-              <span>saldo líquido</span>
-              <MoreHorizontal size={17} />
-            </div>
-            <strong>
+        {view !== "overview" ? (
+          <WorkspaceView view={view} onBack={() => navigate("overview")} />
+        ) : (
+          <div className="dashboard-grid">
+            <section className="balance-card">
+              <div className="card-top">
+                <span>saldo líquido</span>
+                <MoreHorizontal size={17} />
+              </div>
+              <strong>
+                {loading ? (
+                  <LoaderCircle className="spin" />
+                ) : (
+                  money(totals.net, totals.currency)
+                )}
+              </strong>
+              <p className={totals.net >= 0 ? "positive" : "negative"}>
+                <ArrowUpRight size={14} /> período atual
+              </p>
+              <div className="balance-chart">
+                <ResponsiveContainer width="100%" height={130}>
+                  <AreaChart
+                    data={transactions
+                      .slice()
+                      .reverse()
+                      .map((transaction, index) => ({
+                        label: index + 1,
+                        value:
+                          transaction.type === "expense"
+                            ? -transaction.amountMinor
+                            : transaction.amountMinor,
+                      }))}
+                  >
+                    <defs>
+                      <linearGradient
+                        id="balanceFill"
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop
+                          offset="0%"
+                          stopColor="#6f8bff"
+                          stopOpacity={0.65}
+                        />
+                        <stop
+                          offset="100%"
+                          stopColor="#6f8bff"
+                          stopOpacity={0}
+                        />
+                      </linearGradient>
+                    </defs>
+                    <XAxis dataKey="label" hide />
+                    <YAxis hide domain={["auto", "auto"]} />
+                    <CartesianGrid vertical={false} stroke="#252a3b" />
+                    <Tooltip
+                      contentStyle={{
+                        background: "#191b22",
+                        border: "1px solid #333",
+                        borderRadius: 8,
+                        color: "#fff",
+                      }}
+                      formatter={(value) =>
+                        money(Number(value), totals.currency)
+                      }
+                      labelFormatter={() => "movimentação"}
+                    />
+                    <Area
+                      type="monotone"
+                      dataKey="value"
+                      stroke="#7c95ff"
+                      strokeWidth={2}
+                      fill="url(#balanceFill)"
+                      connectNulls
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+              <div className="card-foot">
+                <span>receitas − despesas</span>
+                <span>agora</span>
+              </div>
+            </section>
+            <Stat
+              icon={ArrowUpRight}
+              tone="income-bg"
+              label="receitas"
+              value={loading ? "—" : money(totals.income, totals.currency)}
+            />
+            <Stat
+              icon={ArrowDownLeft}
+              tone="expense-bg"
+              label="despesas"
+              value={loading ? "—" : money(totals.expense, totals.currency)}
+            />
+            <section className="panel movements">
+              <div className="panel-head">
+                <div>
+                  <h3>Movimentações recentes</h3>
+                  <p>O que aconteceu com seu dinheiro.</p>
+                </div>
+                <button type="button" className="link">
+                  Ver todas <ChevronRight size={14} />
+                </button>
+              </div>
               {loading ? (
-                <LoaderCircle className="spin" />
+                <LoadingRows />
               ) : (
-                money(totals.net, totals.currency)
+                (transactions.length ? transactions : fallbackMovements).map(
+                  (m, index) => {
+                    const Icon =
+                      "icon" in m
+                        ? m.icon
+                        : m.type === "income"
+                          ? ArrowUpRight
+                          : m.type === "expense"
+                            ? ArrowDownLeft
+                            : ArrowLeftRight;
+                    const tone = "tone" in m ? m.tone : m.type;
+                    return (
+                      <div className="movement" key={"id" in m ? m.id : index}>
+                        <span className={`movement-icon ${tone}`}>
+                          <Icon size={15} />
+                        </span>
+                        <span className="movement-info">
+                          <b>{"title" in m ? m.title : m.description}</b>
+                          <small>
+                            {"meta" in m
+                              ? m.meta
+                              : new Date(m.occurredAt).toLocaleDateString(
+                                  "pt-BR",
+                                )}
+                          </small>
+                        </span>
+                        <strong className={tone}>
+                          {"amount" in m
+                            ? m.amount
+                            : `${m.type === "income" ? "+" : m.type === "expense" ? "−" : ""} ${money(m.amountMinor, m.currency)}`}
+                        </strong>
+                      </div>
+                    );
+                  },
+                )
               )}
-            </strong>
-            <p className={totals.net >= 0 ? "positive" : "negative"}>
-              <ArrowUpRight size={14} /> período atual
-            </p>
-            <div className="balance-chart">
-              {[
-                25, 42, 59, 76, 33, 50, 67, 84, 41, 58, 75, 32, 49, 66, 83, 40,
-                57, 74, 31, 48,
-              ].map((height) => (
-                <i key={height} style={{ height: `${height}%` }} />
-              ))}
-            </div>
-            <div className="card-foot">
-              <span>receitas − despesas</span>
-              <span>agora</span>
-            </div>
-          </section>
-          <Stat
-            icon={ArrowUpRight}
-            tone="income-bg"
-            label="receitas"
-            value={loading ? "—" : money(totals.income, totals.currency)}
-          />
-          <Stat
-            icon={ArrowDownLeft}
-            tone="expense-bg"
-            label="despesas"
-            value={loading ? "—" : money(totals.expense, totals.currency)}
-          />
-          <section className="panel movements">
-            <div className="panel-head">
-              <div>
-                <h3>Movimentações recentes</h3>
-                <p>O que aconteceu com seu dinheiro.</p>
+            </section>
+            <section className="panel goals">
+              <div className="panel-head">
+                <div>
+                  <h3>Atalhos</h3>
+                  <p>Ações rápidas para sua rotina.</p>
+                </div>
+                <button type="button" className="add">
+                  <Plus size={16} />
+                </button>
               </div>
-              <button type="button" className="link">
-                Ver todas <ChevronRight size={14} />
-              </button>
-            </div>
-            {loading ? (
-              <LoadingRows />
-            ) : (
-              (transactions.length ? transactions : fallbackMovements).map(
-                (m, index) => {
-                  const Icon =
-                    "icon" in m
-                      ? m.icon
-                      : m.type === "income"
-                        ? ArrowUpRight
-                        : m.type === "expense"
-                          ? ArrowDownLeft
-                          : ArrowLeftRight;
-                  const tone = "tone" in m ? m.tone : m.type;
-                  return (
-                    <div className="movement" key={"id" in m ? m.id : index}>
-                      <span className={`movement-icon ${tone}`}>
-                        <Icon size={15} />
-                      </span>
-                      <span className="movement-info">
-                        <b>{"title" in m ? m.title : m.description}</b>
-                        <small>
-                          {"meta" in m
-                            ? m.meta
-                            : new Date(m.occurredAt).toLocaleDateString(
-                                "pt-BR",
-                              )}
-                        </small>
-                      </span>
-                      <strong className={tone}>
-                        {"amount" in m
-                          ? m.amount
-                          : `${m.type === "income" ? "+" : m.type === "expense" ? "−" : ""} ${money(m.amountMinor, m.currency)}`}
-                      </strong>
-                    </div>
-                  );
-                },
-              )
-            )}
-          </section>
-          <section className="panel goals">
-            <div className="panel-head">
-              <div>
-                <h3>Atalhos</h3>
-                <p>Ações rápidas para sua rotina.</p>
+              <div className="quick-action">
+                <ChartNoAxesCombined size={18} />
+                <span>
+                  <b>Resumo financeiro</b>
+                  <small>
+                    {totals.income + totals.expense
+                      ? `${summary.length} moeda(s) no período`
+                      : "Sem lançamentos ainda"}
+                  </small>
+                </span>
+                <ChevronRight size={15} />
               </div>
-              <button type="button" className="add">
-                <Plus size={16} />
-              </button>
-            </div>
-            <div className="quick-action">
-              <ChartNoAxesCombined size={18} />
-              <span>
-                <b>Resumo financeiro</b>
-                <small>
-                  {totals.income + totals.expense
-                    ? `${summary.length} moeda(s) no período`
-                    : "Sem lançamentos ainda"}
-                </small>
-              </span>
-              <ChevronRight size={15} />
-            </div>
-            <div className="quick-action">
-              <CreditCard size={18} />
-              <span>
-                <b>Contas a pagar e receber</b>
-                <small>Veja seus próximos vencimentos</small>
-              </span>
-              <ChevronRight size={15} />
-            </div>
-          </section>
-        </div>
+              <div className="quick-action">
+                <CreditCard size={18} />
+                <span>
+                  <b>Contas a pagar e receber</b>
+                  <small>Veja seus próximos vencimentos</small>
+                </span>
+                <ChevronRight size={15} />
+              </div>
+            </section>
+          </div>
+        )}
       </section>
+      <nav className="bottom-bar" aria-label="Navegação principal">
+        <Nav
+          icon={LayoutDashboard}
+          active={view === "overview"}
+          onClick={() => navigate("overview")}
+        >
+          Início
+        </Nav>
+        <Nav
+          icon={ArrowLeftRight}
+          active={view === "transactions"}
+          onClick={() => navigate("transactions")}
+        >
+          Transações
+        </Nav>
+        <Nav
+          icon={Wallet}
+          active={view === "accounts"}
+          onClick={() => navigate("accounts")}
+        >
+          Contas
+        </Nav>
+        <Nav
+          icon={MoreHorizontal}
+          active={view === "settings"}
+          onClick={() => navigate("settings")}
+        >
+          Mais
+        </Nav>
+      </nav>
     </main>
   );
 }
@@ -428,15 +603,96 @@ function Nav({
   icon: Icon,
   children,
   active = false,
+  onClick,
 }: {
   icon: typeof LayoutDashboard;
   children: React.ReactNode;
   active?: boolean;
+  onClick?: () => void;
 }) {
   return (
-    <button type="button" className={active ? "nav-active" : ""}>
+    <button
+      type="button"
+      className={active ? "nav-active" : ""}
+      onClick={onClick}
+    >
       <Icon size={17} /> {children}
     </button>
+  );
+}
+
+function WorkspaceView({
+  view,
+  onBack,
+}: { view: Exclude<View, "overview">; onBack: () => void }) {
+  const content: Record<
+    Exclude<View, "overview">,
+    { title: string; eyebrow: string; description: string; icon: typeof Wallet }
+  > = {
+    transactions: {
+      title: "Transações",
+      eyebrow: "movimentações",
+      description:
+        "Acompanhe entradas, saídas e transferências em um só lugar.",
+      icon: ArrowLeftRight,
+    },
+    accounts: {
+      title: "Contas",
+      eyebrow: "patrimônio",
+      description: "Organize suas contas e veja onde seu dinheiro está.",
+      icon: Wallet,
+    },
+    budgets: {
+      title: "Orçamentos",
+      eyebrow: "planejamento",
+      description: "Defina limites por categoria e acompanhe seu ritmo.",
+      icon: Target,
+    },
+    obligations: {
+      title: "A pagar e receber",
+      eyebrow: "compromissos",
+      description: "Veja vencimentos próximos e mantenha o caixa previsível.",
+      icon: CreditCard,
+    },
+    settings: {
+      title: "Configurações",
+      eyebrow: "preferências",
+      description: "Ajuste sua experiência no Whallet.",
+      icon: Settings,
+    },
+  };
+  const page = content[view];
+  const Icon = page.icon;
+  return (
+    <section className="workspace-view">
+      <div className="workspace-hero">
+        <span className="workspace-icon">
+          <Icon size={22} />
+        </span>
+        <div>
+          <p className="eyebrow">{page.eyebrow}</p>
+          <h2>{page.title}</h2>
+          <p>{page.description}</p>
+        </div>
+      </div>
+      <div className="workspace-cards">
+        <article>
+          <b>Pronto para começar?</b>
+          <span>Esta área já está preparada para receber seus dados.</span>
+          <button type="button" className="primary" onClick={onBack}>
+            Voltar para visão geral <ChevronRight size={16} />
+          </button>
+        </article>
+        <article>
+          <span className="workspace-number">01</span>
+          <b>Dados conectados</b>
+          <span>
+            O painel é atualizado automaticamente quando houver novas
+            movimentações.
+          </span>
+        </article>
+      </div>
+    </section>
   );
 }
 function Stat({
