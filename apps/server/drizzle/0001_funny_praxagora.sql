@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX IF NOT EXISTS "transactions_idempotency_key_idx" ON "transactions" USING btree ("idempotency_key");
