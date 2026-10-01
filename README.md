@@ -9,7 +9,7 @@ pnpm install
 pnpm dev
 ```
 
-The API listens on `http://localhost:3001` and the frontend on `http://localhost:3000`.
+The API listens on `http://localhost:8080` and the frontend on `http://localhost:3000`.
 
 ## Environment
 
